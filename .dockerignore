@@ -1,0 +1,12 @@
+.git
+node_modules
+dist
+dist-ssr
+.data
+.env
+.env.*
+!.env.example
+coverage
+test-results
+playwright-report
+*.log

@@ -14,7 +14,8 @@
     "dev:web": "vite --host 0.0.0.0",
     "start:api": "node server/index.mjs",
     "test:workflow:browser": "node tests/workflow-browser.mjs",
-    "staff:create": "node server/create-staff.mjs"
+    "staff:create": "node server/create-staff.mjs",
+    "account:create": "node server/create-account.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

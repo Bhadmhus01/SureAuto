@@ -34,3 +34,15 @@ jobs:
           TEST_DATABASE_URL: postgresql://sureauto:local-ci-only@localhost:5432/sureauto_test
       - run: npm run build
       - run: npm audit --omit=dev
+      - name: Validate production Compose configuration
+        run: docker compose config --quiet
+        env:
+          POSTGRES_PASSWORD: ci-only-64-character-example-0000000000000000
+          SUREAUTO_PORT: 8080
+          PUBLIC_REGISTRATION_ENABLED: "false"
+      - name: Build production containers
+        run: docker compose build
+        env:
+          POSTGRES_PASSWORD: ci-only-64-character-example-0000000000000000
+          SUREAUTO_PORT: 8080
+          PUBLIC_REGISTRATION_ENABLED: "false"

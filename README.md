@@ -45,6 +45,12 @@ If Chromium is preinstalled, set `CHROMIUM_PATH=/path/to/chromium`. Real-browser
 
 For PostgreSQL adapter tests, set `TEST_DATABASE_URL` to a disposable test database. CI provisions PostgreSQL 17; never use a production database for tests.
 
+## Restricted pilot deployment
+
+A Docker Compose reference stack provides PostgreSQL, a non-root API, a same-origin Nginx SPA/API proxy, readiness checks and production startup guards. It binds the web listener to loopback for an external TLS proxy, keeps public registration disabled by default in production, and has no payment/registry provider clients. It is a restricted single-node pilot baseline, not a general public-production approval. See [Deployment runbook](docs/DEPLOYMENT.md) for TLS, proxy trust, account limitations and backup/restore requirements.
+
+Authenticated live accounts can change their password after re-entering the current password; the change revokes other sessions and rotates the current session. Email verification, password recovery and staff MFA are not implemented, so keep access restricted.
+
 ## Demo flows
 
 - Overview and vehicle discovery: search, make/location/price filters, sort and saved vehicles.
