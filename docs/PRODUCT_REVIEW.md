@@ -1,5 +1,7 @@
 # SureAuto — product and commercial review
 
+> **Implementation update:** this document describes the initial frontend milestone. The subsequent full-stack workflow now adds persistent PostgreSQL-backed orders, role-based authentication, private evidence and QA publication. See [VERIFICATION_PILOT.md](VERIFICATION_PILOT.md) for current scope and remaining launch gates. Commercial/legal cautions below still apply.
+
 Reviewed against the supplied October 2026 v2.1 plan. This is a product/design assessment, not a legal opinion or independent validation of market statistics.
 
 ## Recommendation

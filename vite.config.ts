@@ -3,6 +3,6 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react()],
-  server: { host: '0.0.0.0', allowedHosts: ['.e2b.app'] },
-  preview: { host: '0.0.0.0', allowedHosts: ['.e2b.app'] },
+  server: { host: '0.0.0.0', allowedHosts: ['.e2b.app'], proxy: { '/api': { target: 'http://127.0.0.1:3001', changeOrigin: false } } },
+  preview: { host: '0.0.0.0', allowedHosts: ['.e2b.app'], proxy: { '/api': { target: 'http://127.0.0.1:3001', changeOrigin: false } } },
 })

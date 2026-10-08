@@ -26,3 +26,9 @@ dist-ssr
 # Generated test artifacts
 test-results/
 playwright-report/
+
+# Local database and configuration (never commit identities or evidence)
+.data/
+.env
+.env.*
+!.env.example

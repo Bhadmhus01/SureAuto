@@ -2,7 +2,17 @@
 
 **Before money moves, make sure.**
 
-A responsive, verification-first frontend MVP for the Nigerian used-vehicle market. Built from the October 2026 commercial plan with React 19, TypeScript, Vite and Lucide icons. Fonts and listing assets are served locally.
+A verification-first React/TypeScript workspace with a persistent Fastify/PostgreSQL inspection workflow. Fonts and listing assets are served locally.
+
+## New: full-stack verification pilot
+
+Open **`/verification`** (or choose **Verification workflow** in the sidebar) to run the complete sandbox sequence:
+
+**VIN quote → request → simulated confirmation → inspector assignment → private evidence upload → report → independent QA → published passport.**
+
+The buyer, inspector and QA screens have role-controlled API access. Each sandbox gets its own isolated workspace. The PostgreSQL-backed workflow survives page reloads and API restarts; the original discovery collection remains separate illustrative content.
+
+See [Verification pilot — runbook, security boundaries and scope](docs/VERIFICATION_PILOT.md).
 
 ## Run
 
@@ -11,10 +21,12 @@ npm ci
 npm run dev
 ```
 
-Vite listens on `0.0.0.0:5173` and permits Arena's `.e2b.app` preview hosts.
+Requires Node 22.12+. `npm run dev` starts both API (3001) and Vite (5173) in sandbox mode. Vite permits Arena's `.e2b.app` preview hosts and proxies relative `/api` requests. The embedded PostgreSQL database lives in ignored `.data/postgres`; set `DATABASE_URL` to use a PostgreSQL server instead. Do not share a database between sandbox and live environments.
+
+For HTTPS embedded previews: `COOKIE_SECURE=true COOKIE_EMBEDDED=true npm run dev`. Do not set these flags for ordinary local HTTP development. Production requires a separate database, `NODE_ENV=production`, `DATABASE_URL`, and `COOKIE_SECURE=true`; sandbox startup is refused in production.
 
 ```bash
-npm test        # 14 domain and jsdom interaction tests
+npm test        # domain, UI, API, authentication and persistence tests
 npm run lint
 npm run build
 npm run preview
@@ -26,9 +38,12 @@ An optional real-browser smoke test is included:
 npx playwright install chromium
 # with the dev server already running:
 npm run test:browser
+npm run test:workflow:browser
 ```
 
-If Chromium is preinstalled, use `CHROMIUM_PATH=/path/to/chromium npm run test:browser`. Browser downloads require access to Playwright's CDN and runtime system libraries. Real-browser tests could not be executed in the provided restricted sandbox; build, lint and all 14 unit/UI interaction tests passed. Screenshot output is ignored in `test-results/`.
+If Chromium is preinstalled, set `CHROMIUM_PATH=/path/to/chromium`. Real-browser tests for discovery and the new workflow passed using Chromium with a locally supplied runtime. Screenshot output is ignored in `test-results/`.
+
+For PostgreSQL adapter tests, set `TEST_DATABASE_URL` to a disposable test database. CI provisions PostgreSQL 17; never use a production database for tests.
 
 ## Demo flows
 
@@ -42,18 +57,20 @@ If Chromium is preinstalled, use `CHROMIUM_PATH=/path/to/chromium npm run test:b
 - `/inspect/demo`: local field-inspection drafts. Photo input does not upload or retain photos.
 - Passport print layout (save PDF via browser), copyable links, help and local preferences.
 
-SPA hosting must serve `index.html` for application paths including `/v/*`, `/sell`, `/check`, `/dealer/intake` and `/inspect/*`.
+The new `/verification` and `/passport/*` routes also require SPA fallback. Proxy `/api/*` to the backend **before** the SPA catch-all. SPA hosting must serve `index.html` for application paths including `/v/*`, `/sell`, `/check`, `/dealer/intake` and `/inspect/*`.
 
 ## Important scope boundaries
 
-This is an interactive frontend prototype, **not a production verification or financial service**. All VINs, findings and vehicles are illustrative; listing images are AI-generated. The demo date is fixed to 8 October 2026 for deterministic freshness examples.
+**No live registry checks, payment processing or commercial inspection service are activated.** Sandbox confirmations never move money, and all sandbox findings stay visibly labeled in their own URL namespace. Registry checks remain unavailable rather than being reported clear.
 
-Saved vehicles, VIN searches and draft forms use browser localStorage; they are not synchronized, encrypted, authenticated or stored server-side. Actual inspections, registry lookups, payment, escrow, WhatsApp relay, QR certificates, immutable evidence, offline PWA support and signed assignment tokens are not implemented. Refresh requests explain their unavailable status and never alter a finding or take payment.
+The **original discovery prototype** uses AI-generated images and illustrative VINs/findings, fixed to 8 October 2026. Its saved vehicles, seller forms and draft inspections remain browser-local. The **new verification workspace** uses real server persistence, authenticated roles, private compressed evidence and QA publication. It uses a proposed ₦18,000 field-visit quote instead of the prototype's ₦2,500 remote-check pricing.
 
-See [the product and commercial review](docs/PRODUCT_REVIEW.md) for pricing contradictions, unsupported claims, privacy/legal assumptions, a production architecture outline and launch acceptance gates.
+The new workflow is a tested pilot implementation, **not a production launch approval**. See the runbook for remaining security, privacy, operational and payment-integration gates. [The commercial review](docs/PRODUCT_REVIEW.md) documents the original plan's pricing contradictions and unsupported claims.
 
 ## Layout
 
+- `server/`: Fastify API, PostgreSQL adapters/migrations, authentication, pricing and state transitions.
+- `src/workflow/`: buyer, inspector, QA and public passport interfaces.
 - `src/App.tsx`: workspace screens and demo workflows.
 - `src/domain.ts`: sample data, VIN syntax, freshness, quote and mileage rules.
 - `src/App.css`: responsive desktop/mobile and printable passport styles.
