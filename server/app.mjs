@@ -11,6 +11,7 @@ export async function createApp(options = {}) {
   const db = options.db ?? await database({ url: process.env.DATABASE_URL, directory: process.env.DATA_DIR || '.data/postgres' })
   await migrate(db)
   const sandbox = options.sandbox ?? process.env.SANDBOX_MODE === 'true'
+  const registrationEnabled = options.registrationEnabled ?? (process.env.PUBLIC_REGISTRATION_ENABLED === undefined ? process.env.NODE_ENV !== 'production' : process.env.PUBLIC_REGISTRATION_ENABLED === 'true')
   // A database belongs to exactly one environment. Never mix live and sandbox data.
   await db.query('CREATE TABLE IF NOT EXISTS deployment_mode (id INTEGER PRIMARY KEY CHECK(id=1), sandbox BOOLEAN NOT NULL)')
   await db.query('INSERT INTO deployment_mode VALUES (1,$1) ON CONFLICT (id) DO NOTHING', [sandbox])
@@ -19,7 +20,7 @@ export async function createApp(options = {}) {
   }
   const now = options.now ?? Date.now
   const secure = options.secure ?? process.env.COOKIE_SECURE === 'true'
-  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 })
+  const app = Fastify({ logger: false, bodyLimit: 64 * 1024, trustProxy: options.trustProxy ?? (process.env.TRUST_PROXY === 'true') })
   app.decorate('db', db)
   await app.register(cookie)
   await app.register(multipart, { limits: { files: 1, fileSize: 5 * 1024 * 1024, fields: 0, parts: 1 } })
@@ -48,17 +49,34 @@ export async function createApp(options = {}) {
   }
   const roles = (...allowed) => async req => { await authenticate(req); if (!allowed.includes(req.user.role)) fail(403, 'This action requires a different role.') }
   const userView = u => ({ id:u.id, name:u.name, email:u.email, role:u.role, sandbox:u.sandbox, workspaceId:u.workspace_id })
-  const signIn = async (reply, user) => {
+  const signIn = async (reply, user, expectedPasswordHash) => {
     const raw = token()
-    await db.query('DELETE FROM sessions WHERE expires_at <= $1', [now()])
-    await db.query('INSERT INTO sessions VALUES ($1,$2,$3)', [hash(raw), user.id, now() + 8 * 3600000])
+    await db.transaction(async tx => {
+      if (expectedPasswordHash !== undefined) {
+        const current = (await tx.query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE', [user.id])).rows[0]
+        if (!current || current.password_hash !== expectedPasswordHash) fail(401, 'Email or password is incorrect.')
+      }
+      await tx.query('DELETE FROM sessions WHERE expires_at <= $1', [now()])
+      await tx.query('INSERT INTO sessions VALUES ($1,$2,$3)', [hash(raw), user.id, now() + 8 * 3600000])
+    })
     reply.setCookie('sa_session', raw, cookieOptions)
     return { user: userView(user) }
   }
-  app.get('/api/health', async () => ({ ok: true, sandbox, storage: process.env.DATABASE_URL ? 'postgresql' : 'embedded-postgresql', payments: 'disabled', registries: 'unavailable' }))
+  app.get('/api/health', async () => ({ ok: true, sandbox, registrationEnabled, storage: process.env.DATABASE_URL ? 'postgresql' : 'embedded-postgresql', payments: 'disabled', registries: 'unavailable' }))
+  app.get('/api/health/live', async () => ({ ok: true }))
+  app.get('/api/health/ready', async (_req, reply) => {
+    try {
+      await db.query('SELECT 1')
+      return { ok: true, sandbox }
+    } catch {
+      reply.code(503)
+      return { ok: false }
+    }
+  })
   app.get('/api/auth/session', { preHandler: authenticate }, async req => ({ user: userView(req.user) }))
   app.post('/api/auth/register', { config: { rateLimit: { max: 5, timeWindow:'1 minute' } } }, async (req, reply) => {
     if (sandbox) fail(409, 'Use an isolated sandbox workspace in this environment; real registration is disabled.')
+    if (!registrationEnabled) fail(503, 'New account registration is disabled for this deployment. Contact the operator.')
     const data = z.object({name:text(80), email:z.email().max(254).transform(v=>v.toLowerCase()), password:z.string().min(12).max(128)}).strict().parse(req.body)
     const userId=id()
     try { await db.query('INSERT INTO users VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [userId,data.email,data.name,'live','buyer',passwordHash(data.password),false,now()]) }
@@ -70,7 +88,26 @@ export async function createApp(options = {}) {
     const user=(await db.query('SELECT * FROM users WHERE email=$1 AND sandbox=FALSE',[data.email])).rows[0]
     if(!user || !passwordMatches(data.password,user.password_hash)) fail(401,'Email or password is incorrect.')
     if(sandbox) fail(403,'Real accounts cannot sign in to sandbox mode.')
-    return signIn(reply,user)
+    return signIn(reply,user,user.password_hash)
+  })
+  app.post('/api/auth/password', { preHandler: authenticate, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (req.user.sandbox || !req.user.password_hash) fail(403, 'Password changes are available for live accounts only.')
+    const data = z.object({ currentPassword: z.string().min(1).max(128), newPassword: z.string().min(12).max(128) }).strict().parse(req.body)
+    if (data.newPassword === data.currentPassword) fail(400, 'Choose a new password that differs from your current password.')
+    if (!passwordMatches(data.currentPassword, req.user.password_hash)) fail(403, 'Current password is incorrect.')
+
+    const replacementHash = passwordHash(data.newPassword)
+    const replacementSession = token()
+    const changedAt = now()
+    await db.transaction(async tx => {
+      const current = (await tx.query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE', [req.user.id])).rows[0]
+      if (!current || current.password_hash !== req.user.password_hash) fail(409, 'Account credentials changed. Sign in again and retry.')
+      await tx.query('UPDATE users SET password_hash=$2 WHERE id=$1', [req.user.id, replacementHash])
+      await tx.query('DELETE FROM sessions WHERE user_id=$1', [req.user.id])
+      await tx.query('INSERT INTO sessions VALUES ($1,$2,$3)', [hash(replacementSession), req.user.id, changedAt + 8 * 3600000])
+    })
+    reply.setCookie('sa_session', replacementSession, cookieOptions)
+    return { ok: true }
   })
   app.post('/api/auth/logout', async (req,reply) => {
     if(req.cookies.sa_session) await db.query('DELETE FROM sessions WHERE hash=$1',[hash(req.cookies.sa_session)])
